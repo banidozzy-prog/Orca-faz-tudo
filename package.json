@@ -1,1 +1,12 @@
-
+{
+  "name": "bot-logs-orca",
+  "version": "1.0.0",
+  "description": "Bot de Logs de Mensagens, Entradas, Saídas e Invites - Orca",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1"
+  }
+}
