@@ -1,12 +1,15 @@
 {
-  "name": "bot-logs-orca",
+  "name": "orca-ticket",
   "version": "1.0.0",
-  "description": "Bot de Logs de Mensagens, Entradas, Saídas e Invites - Orca",
+  "description": "Sistema de atendimento e tickets por abas e tópicos",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "discord.js": "^14.14.1"
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5"
   }
-}
