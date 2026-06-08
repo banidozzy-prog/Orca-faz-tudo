@@ -1,16 +1,12 @@
 {
   "name": "orca-ticket",
   "version": "1.0.0",
-  "description": "Sistema de atendimento e tickets por abas e tópicos",
+  "description": "Sistema de tickets",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5"
+    "discord.js": "^14.14.1"
   }
 }
