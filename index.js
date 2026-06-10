@@ -13,6 +13,7 @@ const client = new Client({
     ] 
 });
 
+// Banco de dados dinâmico por Servidor
 const db = new Map();
 const cooldownsNot = new Map();
 
@@ -34,23 +35,32 @@ function getGuildConfig(guildId) {
 const emojis = { suporte: "🎧", criar: "➕", codigo: "⚙️", confirmar: "✅", cancelar: "❌", proibido: "⛔", sino: "🔔" };
 
 client.once('ready', async () => {
-    const commands = [new SlashCommandBuilder().setName('configurar').setDescription('Painel de Configuração')];
+    // IDs dos seus servidores
+    const SERVIDORES_ID = ['1513013438975184896', '1513267513008586871'];
+    const commands = [new SlashCommandBuilder().setName('configurar').setDescription('Painel de Configuração Mestre')];
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log('🚀 Bot com Emojis Padrão e Estabilidade Online!');
+
+    for (const guildId of SERVIDORES_ID) {
+        try {
+            await rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: commands });
+            console.log(`🚀 Comando registrado no servidor: ${guildId}`);
+        } catch (error) { console.error(`❌ Erro no servidor ${guildId}:`, error); }
+    }
 });
 
 client.on('interactionCreate', async (i) => {
     if (!i.guild) return;
     const config = getGuildConfig(i.guild.id);
 
-    // EVITAR ERRO DE INTERAÇÃO FALHOU
+    // Resposta imediata para evitar erro de interação
     if (i.isButton() || i.isStringSelectMenu() || i.isChannelSelectMenu() || i.isRoleSelectMenu()) {
         await i.deferUpdate().catch(() => {});
     }
 
     if (i.isChatInputCommand() && i.commandName === 'configurar') {
-        const embed = new EmbedBuilder().setTitle(`${emojis.codigo} Central de Gerenciamento`).setDescription('Escolha abaixo:').setColor('#4f46e5');
+        if (!i.member.permissions.has(PermissionFlagsBits.Administrator)) return i.reply({ content: `${emojis.proibido} Acesso Negado.`, ephemeral: true });
+
+        const embed = new EmbedBuilder().setTitle(`${emojis.codigo} Central de Gerenciamento`).setDescription('Configure os módulos abaixo:').setColor('#4f46e5');
         const menu = new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder().setCustomId('menu_mestre_config').setPlaceholder('Escolha o módulo...')
                 .addOptions([
@@ -61,18 +71,15 @@ client.on('interactionCreate', async (i) => {
         );
         await i.reply({ embeds: [embed], components: [menu] });
     }
-
-    // AQUI VOCÊ ADICIONA OS DEMAIS EVENTOS DE SELECT MENU/BOTÕES/MODAIS...
-    // Lembre-se de trocar qualquer referência antiga de 'myEmojis' por 'emojis'
+    
+    // [Aqui você mantém o restante da sua lógica de botões e modais...]
+    // Nota: Lembre-se de usar 'emojis.nome' em vez de 'myEmojis.nome' no restante do seu código.
 });
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
-    const config = getGuildConfig(message.guild.id);
-
-    if (message.content.toLowerCase() === '!not') {
-        // [Lógica do !not que você já tinha, apenas mantenha como está]
-    }
+    // [Lógica do !not]
 });
 
-client.login(process.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN);
+
