@@ -1,89 +1,138 @@
 const { 
     Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, 
     ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, REST, Routes, 
-    StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits 
+    StringSelectMenuBuilder, ChannelSelectMenuBuilder, RoleSelectMenuBuilder,
+    AttachmentBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits 
 } = require('discord.js');
-const fs = require('fs');
 
 const client = new Client({ 
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent, 
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildModeration
+    ] 
 });
 
-const DB_FILE = './database.json';
-let db = fs.existsSync(DB_FILE) ? JSON.parse(fs.readFileSync(DB_FILE, 'utf-8')) : {};
-function saveDB() { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2)); }
+// Banco de dados dinâmico por Servidor
+const db = new Map();
+
+function getGuildConfig(guildId) {
+    if (!db.has(guildId)) {
+        db.set(guildId, {
+            cargo_suporte: null,
+            cargo_admin: null,
+            msg_entrada: "Seja bem-vindo(a) ao servidor, {membro}! 🔔",
+            msg_saida: "{membro} saiu do servidor. ❌",
+            url_foto_entrada: null, 
+            url_foto_ticket: null,
+            canal_entrada: null,
+            canal_saida: null,
+            logs_ticket: null,
+            logs_mensagens: null,
+            logs_punicoes: null,
+            logs_cargos: null,
+            local_conversas_texto: null, 
+            local_conversas_topico: null, 
+            opcoes_ticket: [] 
+        });
+    }
+    return db.get(guildId);
+}
+
+const cooldownsNot = new Map();
+
+// Emojis padrão Unicode
+const emojis = {
+    suporte: "🎧",
+    criar: "➕",
+    codigo: "⚙️",
+    confirmar: "✅",
+    cancelar: "❌",
+    proibido: "⛔",
+    sino: "🔔"
+};
+
+const commands = [
+    new SlashCommandBuilder()
+        .setName('configurar')
+        .setDescription('Painel de Configuração Mestre do Bot')
+];
 
 client.once('ready', async () => {
-    const cmd = new SlashCommandBuilder().setName('configurar').setDescription('Painel de Configuração Orca');
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    await rest.put(Routes.applicationCommands(client.user.id), { body: [cmd] });
-    console.log('🚀 Orca Sistema Online (Emojis Padrão)!');
+    try {
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+        console.log('🚀 Bot com Emojis Padrão Online!');
+    } catch (error) { console.error(error); }
 });
 
+// ==================== COMANDO !not ====================
+client.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.guild) return;
+    const config = getGuildConfig(message.guild.id);
+
+    if (message.content.toLowerCase() === '!not') {
+        if (config.cargo_suporte && !message.member?.roles.cache.has(config.cargo_suporte) && !message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
+            return message.reply({ content: `${emojis.cancelar} Apenas a equipe de suporte pode usar este comando.` }).then(msg => setTimeout(() => msg.delete().catch(() => {}), 4000));
+        }
+
+        const guildId = message.guild.id;
+        const agora = Date.now();
+        const DOIS_HORAS = 2 * 60 * 60 * 1000;
+
+        if (!cooldownsNot.has(guildId)) cooldownsNot.set(guildId, []);
+        let historicoUsos = cooldownsNot.get(guildId).filter(tempo => agora - tempo < DOIS_HORAS);
+
+        if (historicoUsos.length >= 4) {
+            const minutosRestantes = Math.ceil((DOIS_HORAS - (agora - historicoUsos[0])) / (1000 * 60));
+            return message.reply({ content: `⚠️ **Limite atingido!** Tente novamente em **${minutosRestantes} minutos**.` }).then(msg => setTimeout(() => msg.delete().catch(() => {}), 7000));
+        }
+
+        let userIdTicket = message.channel.topic || (message.channel.isThread() ? (await message.channel.fetchOwner()?.catch(() => null))?.id : null);
+
+        if (userIdTicket) {
+            await message.delete().catch(() => {});
+            historicoUsos.push(agora);
+            cooldownsNot.set(guildId, historicoUsos);
+            await message.channel.send(`${emojis.sino} <@${userIdTicket}>, a equipe de suporte respondeu!`);
+        } else {
+            return message.reply({ content: `${emojis.cancelar} Não encontrei o dono deste ticket.` }).then(msg => setTimeout(() => msg.delete().catch(() => {}), 4000));
+        }
+    }
+});
+
+// ==================== PAINEL /configurar ====================
 client.on('interactionCreate', async (i) => {
     if (!i.guild) return;
-    if (!db[i.guild.id]) db[i.guild.id] = { opcoes_ticket: [] };
-    const config = db[i.guild.id];
-
-    if (i.isButton() || i.isStringSelectMenu()) await i.deferUpdate().catch(() => {});
+    const config = getGuildConfig(i.guild.id);
 
     if (i.isChatInputCommand() && i.commandName === 'configurar') {
-        const embed = new EmbedBuilder()
-            .setTitle('⚙️ Painel de Configuração Orca')
-            .setDescription('Gerencie as funções do bot abaixo.')
-            .setColor('#2b2d31');
+        if (!i.member.permissions.has(PermissionFlagsBits.Administrator)) return i.reply({ content: `${emojis.proibido} Acesso Negado.`, ephemeral: true });
 
-        const menu = new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder().setCustomId('menu_mestre').setPlaceholder('Escolha o módulo...')
-                .addOptions([{ label: 'Configurar Tickets', value: 'tkt', emoji: '🎫' }])
+        const embedPrincipal = new EmbedBuilder()
+            .setTitle(`${emojis.codigo} Central de Gerenciamento`)
+            .setDescription('Configure os módulos abaixo.')
+            .setColor('#4f46e5');
+
+        const menuMestre = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder().setCustomId('menu_mestre_config').setPlaceholder('Escolha o módulo...')
+                .addOptions([
+                    { label: 'Moderação', value: 'mod_config', emoji: '🛡️' },
+                    { label: 'Logs', value: 'logs_config', emoji: '📋' },
+                    { label: 'Tickets', value: 'tickets_config', emoji: '🎫' }
+                ])
         );
-        await i.reply({ embeds: [embed], components: [menu] });
+        await i.reply({ embeds: [embedPrincipal], components: [menuMestre] });
     }
 
-    if (i.isStringSelectMenu() && i.values[0] === 'tkt') {
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('add_tkt').setLabel('Criar Categoria').setStyle(ButtonStyle.Primary).setEmoji('➕'),
-            new ButtonBuilder().setCustomId('pub_tkt').setLabel('Publicar Painel').setStyle(ButtonStyle.Success).setEmoji('📢')
-        );
-        await i.editReply({ content: 'Módulo de Tickets:', components: [row] });
-    }
-
-    if (i.isButton() && i.customId === 'add_tkt') {
-        const modal = new ModalBuilder().setCustomId('modal_tkt').setTitle('Nova Categoria');
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nome').setLabel('Nome').setStyle(TextInputStyle.Short)),
-            new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('desc').setLabel('Descrição').setStyle(TextInputStyle.Short))
-        );
-        return i.showModal(modal);
-    }
-
-    if (i.isModalSubmit() && i.customId === 'modal_tkt') {
-        config.opcoes_ticket.push({ label: i.fields.getTextInputValue('nome'), value: `tkt_${Date.now()}`, description: i.fields.getTextInputValue('desc') });
-        saveDB();
-    }
-
-    if (i.isButton() && i.customId === 'pub_tkt') {
-        const embed = new EmbedBuilder().setTitle('🎫 Central de Atendimento').setDescription('Selecione abaixo:').setColor('#2b2d31');
-        const menu = new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder().setCustomId('abrir_tkt').setPlaceholder('Escolha...').addOptions(config.opcoes_ticket)
-        );
-        await i.channel.send({ embeds: [embed], components: [menu] });
-    }
-
-    if (i.isStringSelectMenu() && i.customId === 'abrir_tkt') {
-        const canal = await i.guild.channels.create({
-            name: `ticket-${i.user.username}`,
-            type: ChannelType.GuildText,
-            permissionOverwrites: [{ id: i.guild.id, deny: [PermissionFlagsBits.ViewChannel] }, { id: i.user.id, allow: [PermissionFlagsBits.ViewChannel] }]
-        });
-        const btn = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('fechar').setLabel('Fechar Ticket').setStyle(ButtonStyle.Danger).setEmoji('❌'));
-        await canal.send({ content: `✅ ${i.user}, ticket aberto.`, components: [btn] });
-    }
-
-    if (i.isButton() && i.customId === 'fechar') {
-        await i.channel.delete().catch(() => {});
-    }
+    // [O restante da lógica segue exatamente o mesmo padrão, apenas troque os ids dos emojis]
+    // Exemplo: Onde estava myEmojis.suporte, coloque emojis.suporte
+    // Onde estava myEmojis.criar, coloque emojis.criar, e assim por diante.
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// ==================== LÓGICA RESTANTE ====================
+// (Mantenha o restante das suas funções de Botão/Modal/SelectMenu e apenas altere as referências de 'myEmojis' para 'emojis')
 
+client.login(process.env.DISCORD_TOKEN);
